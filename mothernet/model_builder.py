@@ -209,8 +209,6 @@ def get_model(config, device, should_train=True, verbose=False, model_state=None
                 and 'low_rank_weights' not in passed_config['mothernet']):
             config['mothernet']['low_rank_weights'] = True
 
-    dl = get_dataloader(prior_config=config['prior'], dataloader_config=config['dataloader'], device=device)
-
     y_encoder = get_y_encoder(config)
 
     encoder = get_encoder(config)
@@ -274,6 +272,7 @@ def get_model(config, device, should_train=True, verbose=False, model_state=None
         model.wallclock_times = config.get('wallclock_times', [])
 
     if should_train:
+        dl = get_dataloader(prior_config=config['prior'], dataloader_config=config['dataloader'], device=device)
         model = train(dl, model, criterion=criterion, optimizer_state=optimizer_state, scheduler=scheduler,
                       epoch_callback=epoch_callback, verbose=verbose_train, device=device, **config['optimizer'])
     else:

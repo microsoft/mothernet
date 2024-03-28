@@ -2,6 +2,79 @@ import numpy as np
 import openml
 import pandas as pd
 import torch
+from scipy.special import expit as sigmoid
+
+
+def linear_correlated_logistic_regression(
+        n_features: int,
+        n_tasks: int,
+        n_datapoints: int,
+        seed: int | None = 42,
+        sampling_correlation: float = 0.0,
+        weights: np.array = None,
+        *args,
+        **kwargs,
+) -> tuple[np.array, np.array]:
+    """Sample features with linear contribution that are correlated."""
+    if weights is None:
+        weights = np.array([np.linspace(-1, 1 * i, n_features) for i in range(1, n_tasks + 1)])
+    else:
+        weights = weights.reshape((n_tasks, n_features))
+
+    if seed is not None:
+        np.random.seed(seed)
+
+    inputs_correlated = np.array([np.linspace(-2, 2, n_datapoints) for _ in range(n_features)]).T
+    inputs_uniform = np.random.uniform(-2, 2, size=(n_datapoints, n_features))
+    inputs = sampling_correlation * inputs_correlated + (1 - sampling_correlation) * inputs_uniform
+
+    condition_number = np.linalg.cond(inputs.T @ inputs)
+    targets = np.array(sigmoid(weights.dot(inputs.T)) > 0.5, dtype=np.float64)
+    y, X = targets.flatten(), inputs
+    return X, y
+
+
+def linear_correlated_step_function(
+        n_features: int,
+        n_tasks: int,
+        n_datapoints: int,
+        seed: int | None = 42,
+        sampling_correlation: float = 0.0,
+        weights: np.array = None,
+        plot: bool = False,
+        *args,
+        **kwargs,
+) -> tuple[np.array, np.array]:
+    """Sample features with linear contribution that are correlated."""
+    if weights is None:
+        weights = np.array([np.linspace(-1, 1 * i, n_features) for i in range(1, n_tasks + 1)])
+    else:
+        weights = weights.reshape((n_tasks, n_features))
+
+    if seed is not None:
+        np.random.seed(seed)
+
+    inputs_correlated = np.array([np.linspace(-2, 2, n_datapoints) for _ in range(n_features)]).T
+    inputs_uniform = np.random.uniform(-2, 2, size=(n_datapoints, n_features))
+    inputs = sampling_correlation * inputs_correlated + (1 - sampling_correlation) * inputs_uniform
+
+    steps = np.linspace(np.min(inputs_uniform) * 0.4, np.max(inputs_uniform) * 0.4, n_features)
+    transformed_inputs = np.copy(inputs)
+    for feature_i in range(n_features):
+        transformed_inputs[:, feature_i] = (inputs[:, feature_i] > steps[feature_i]).astype(np.int32)
+
+    targets = (transformed_inputs.sum(axis=1) > 0).astype(np.float32)
+    condition_number = np.linalg.cond(inputs.T @ inputs)
+    if plot:
+        import matplotlib.pyplot as plt
+        fig, axs = plt.subplots(1, 2, sharex=True, sharey=True, figsize=(4, 2))
+        axs.flatten()
+        for i in range(n_features):
+            axs[i].scatter(inputs[:, i], transformed_inputs[:, i], s=2)
+            axs[i].set_title(f'Class {i}')
+        plt.show()
+    y, X = targets, inputs
+    return X, y
 
 
 def get_openml_classification(did, max_samples, multiclass=True, shuffled=True):
