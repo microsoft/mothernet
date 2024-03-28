@@ -2,7 +2,7 @@ import numpy as np
 from torch.utils.data import DataLoader
 
 import mothernet.priors as priors
-from mothernet.priors import ClassificationAdapterPrior, BagPrior, BooleanConjunctionPrior
+from mothernet.priors import ClassificationAdapterPrior, BagPrior, BooleanConjunctionPrior, StepFunctionPrior
 
 
 class PriorDataLoader(DataLoader):
@@ -47,6 +47,8 @@ def get_dataloader(prior_config, dataloader_config, device):
         # Prior bag combines priors
         prior = BagPrior(base_priors={'gp': gp_flexible, 'mlp': mlp_flexible},
                          prior_weights={'mlp': 0.961, 'gp': 0.039})
+    elif prior_type == "step_function":
+        prior = priors.StepFunctionPrior(prior_config['step_function'])
     elif prior_type == "boolean_only":
         prior = BooleanConjunctionPrior(hyperparameters=prior_config['boolean'])
     elif prior_type == "bag_boolean":

@@ -3,6 +3,7 @@ from contextlib import nullcontext
 
 import torch
 from torch import nn
+from tqdm import tqdm
 from torch.cuda.amp import GradScaler, autocast
 from torch.optim.lr_scheduler import CosineAnnealingLR, LinearLR, SequentialLR
 
@@ -35,13 +36,13 @@ def train_epoch(model, aggregate_k_gradients, using_dist, scaler, dl, device, op
     ignore_steps = 0
     steps_per_epoch = len(dl)
     assert len(dl) % aggregate_k_gradients == 0, 'Please set the number of steps per epoch s.t. `aggregate_k_gradients` divides it.'
-    for batch, (data, targets, single_eval_pos) in enumerate(dl):
+    for batch, (data, targets, single_eval_pos) in enumerate(tqdm(dl)):
         if using_dist and not (batch % aggregate_k_gradients == aggregate_k_gradients - 1):
             cm = model.no_sync()
         else:
             cm = nullcontext()
         with cm:
-            with autocast(dtype=torch.bfloat16) if scaler is not None else nullcontext():
+            with autocast(dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16) if scaler is not None else nullcontext():
                 output = model(tuple(e.to(device) if torch.is_tensor(e) else e for e in data)
                                if isinstance(data, tuple) else data.to(device), single_eval_pos=single_eval_pos)
 

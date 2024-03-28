@@ -25,6 +25,8 @@ def extract_additive_model(model, X_train, y_train, device="cpu", inference_devi
     else:
         x_all_torch = xs
     X_onehot, bin_edges = bin_data(x_all_torch, n_bins=model.n_bins)
+    if model.input_layer_norm:
+        X_onehot = model.input_norm(X_onehot.float())
     if getattr(model, "fourier_features", 0) > 0:
         x_scaled = normalize_data(xs)
         x_fourier = get_fourier_features(x_scaled, model.fourier_features)
@@ -62,6 +64,7 @@ def extract_additive_model(model, X_train, y_train, device="cpu", inference_devi
 
 
 def predict_with_additive_model(X_train, X_test, weights, biases, bin_edges, inference_device="cpu", n_bins=64):
+    additive_components = []
     if inference_device == "cpu":
         # FIXME replacing nan with 0 as in TabPFN
         X_test = np.nan_to_num(X_test, 0)
@@ -69,13 +72,14 @@ def predict_with_additive_model(X_train, X_test, weights, biases, bin_edges, inf
         for col, bins, w in zip(X_test.T, bin_edges, weights):
             binned = np.searchsorted(bins, col)
             out += w[binned]
+            additive_components.append(w[binned])
         out += biases
         if np.isnan(out).any():
             print("NAN")
             import pdb
             pdb.set_trace()
         from scipy.special import softmax
-        return softmax(out / .8, axis=1)
+        return softmax(out / .8, axis=1), additive_components
     elif "cuda" in inference_device:
         mean = torch.Tensor(np.nanmean(X_train, axis=0)).to(inference_device)
         std = torch.Tensor(np.nanstd(X_train, axis=0, ddof=1) + .000001).to(inference_device)
@@ -127,7 +131,12 @@ class MotherNetAdditiveClassifier(ClassifierMixin, BaseEstimator):
         return self
 
     def predict_proba(self, X):
-        return predict_with_additive_model(self.X_train_, X, self.w_, self.b_, self.bin_edges_, inference_device=self.inference_device)
+        return predict_with_additive_model(self.X_train_, X, self.w_, self.b_, self.bin_edges_,
+                                           inference_device=self.inference_device)[0]
+
+    def predict_proba_with_additive_components(self, X):
+        return predict_with_additive_model(self.X_train_, X, self.w_, self.b_, self.bin_edges_,
+                                           inference_device=self.inference_device)
 
     def predict(self, X):
         return self.classes_[self.predict_proba(X).argmax(axis=1)]

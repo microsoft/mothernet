@@ -91,6 +91,11 @@ def get_prior_config(max_features=100, n_samples=1024+128):
 
     prior['gp'] = gp_prior_config
 
+    prior['step_function'] = {
+        'max_steps': 1,
+        'sampling': 'uniform',
+    }
+
     max_num_classes = 10
     classsification_prior = {
         "nan_prob_unknown_reason_reason_prior": 0.5,
