@@ -22,6 +22,7 @@ class BiAttentionMotherNetAdditive(nn.Module):
         super().__init__()
         nhid = emsize * nhid_factor
         self.y_encoder = y_encoder_layer
+        self.is_categorical_encoder = OneHotAndLinear(num_classes=2, emsize=emsize)
         self.low_rank_weights = low_rank_weights  # ignored for now
         self.weight_embedding_rank = weight_embedding_rank  # ignored for now
         self.fourier_features = fourier_features
@@ -93,6 +94,10 @@ class BiAttentionMotherNetAdditive(nn.Module):
         assert isinstance(src, tuple), 'inputs (src) have to be given as (x,y) or (style,x,y) tuple'
 
         _, x_src_org, y_src_org = src
+
+        # FixMe: Handle categoricals and non-categoricals --> How to know based on the data sampled by the prior?
+        sequence_length, batch_size, num_features = x_src_org.shape
+        is_categorical = torch.zeros(size=(1, batch_size, num_features)).to(x_src_org.device)
         X_onehot, _ = bin_data(x_src_org, n_bins=self.n_bins,
                                single_eval_pos=single_eval_pos)
         X_onehot = X_onehot.float()
@@ -106,6 +111,7 @@ class BiAttentionMotherNetAdditive(nn.Module):
             X_features = self.input_norm(X_features)
 
         x_src = self.encoder(X_features)
+        x_src += self.is_categorical_encoder(is_categorical)
         y_src = self.y_encoder(y_src_org.unsqueeze(-1) if len(y_src_org.shape) < len(x_src.shape) else y_src_org)
 
         enc_train = x_src[:single_eval_pos] + y_src[:single_eval_pos].unsqueeze(-2)

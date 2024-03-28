@@ -1,3 +1,5 @@
+from typing import List
+
 import numpy as np
 import torch
 from sklearn.base import BaseEstimator, ClassifierMixin
@@ -9,7 +11,8 @@ from mothernet.models.encoders import get_fourier_features
 from mothernet.utils import normalize_data
 
 
-def extract_additive_model(model, X_train, y_train, device="cpu", inference_device="cpu", pad_zeros=True):
+def extract_additive_model(model, X_train, y_train, device="cpu", inference_device="cpu", pad_zeros=True,
+                           is_categorical: List[bool] = None):
     if "cuda" in inference_device and device == "cpu":
         raise ValueError("Cannot run inference on cuda when model is on cpu")
     n_classes = len(np.unique(y_train))
@@ -29,7 +32,7 @@ def extract_additive_model(model, X_train, y_train, device="cpu", inference_devi
         x_scaled = normalize_data(xs)
         x_fourier = get_fourier_features(x_scaled, model.fourier_features)
         X_onehot = torch.cat([X_onehot, x_fourier], -1)
-    x_src = model.encoder(X_onehot.unsqueeze(1).float())
+    x_src = model.encoder(X_onehot.unsqueeze(1).float()) + model.is_categorical_encoder(is_categorical)
     y_src = model.y_encoder(ys.unsqueeze(1).unsqueeze(-1))
     if x_src.ndim == 4:
         # baam model, per feature
@@ -61,13 +64,14 @@ def extract_additive_model(model, X_train, y_train, device="cpu", inference_devi
     return detach(w), detach(b), detach(bins_data_space)
 
 
-def predict_with_additive_model(X_train, X_test, weights, biases, bin_edges, inference_device="cpu", n_bins=64):
+def predict_with_additive_model(X_train, X_test, weights, biases, bin_edges, inference_device="cpu", n_bins=64,
+                                is_categorical: List[bool] = None):
     if inference_device == "cpu":
-        # FIXME replacing nan with 0 as in TabPFN
-        X_test = np.nan_to_num(X_test, 0)
         out = np.zeros((X_test.shape[0], weights.shape[-1]))
         for col, bins, w in zip(X_test.T, bin_edges, weights):
             binned = np.searchsorted(bins, col)
+            # Put NaN data on the last bin.
+            binned[np.isnan(col)] = n_bins - 1
             out += w[binned]
         out += biases
         if np.isnan(out).any():
@@ -104,7 +108,13 @@ class MotherNetAdditiveClassifier(ClassifierMixin, BaseEstimator):
         self.device = device
         self.inference_device = inference_device
 
-    def fit(self, X, y):
+    def fit(self, X, y, is_categorical: List[bool] = None):
+        if is_categorical is None:
+            # Assume all features are continuous if not otherwise specified
+            is_categorical = [False] * X.shape[1]
+        assert X.shape[1] == len(is_categorical), 'Is_categorical must have the same length as the number of features in X.'
+        self.is_categorical = is_categorical
+
         self.X_train_ = X
         le = LabelEncoder()
         y = le.fit_transform(y)
@@ -118,7 +128,8 @@ class MotherNetAdditiveClassifier(ClassifierMixin, BaseEstimator):
             pad_zeros = config['prior']['classification']['pad_zeros']
         except KeyError:
             pad_zeros = True
-        w, b, bin_edges = extract_additive_model(model, X, y, device=self.device, inference_device=self.inference_device, pad_zeros=pad_zeros)
+        w, b, bin_edges = extract_additive_model(model, X, y, device=self.device, inference_device=self.inference_device,
+                                                 pad_zeros=pad_zeros, is_categorical=self.is_categorical)
         self.w_ = w
         self.b_ = b
         self.bin_edges_ = bin_edges
@@ -127,7 +138,8 @@ class MotherNetAdditiveClassifier(ClassifierMixin, BaseEstimator):
         return self
 
     def predict_proba(self, X):
-        return predict_with_additive_model(self.X_train_, X, self.w_, self.b_, self.bin_edges_, inference_device=self.inference_device)
+        return predict_with_additive_model(self.X_train_, X, self.w_, self.b_, self.bin_edges_,
+                                           inference_device=self.inference_device, is_categorical=self.is_categorical)
 
     def predict(self, X):
         return self.classes_[self.predict_proba(X).argmax(axis=1)]

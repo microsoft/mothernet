@@ -108,6 +108,38 @@ def test_baam():
     assert classifier.score(X_test, y_test) > 0.9
 
 
+def test_baam_with_nan():
+    X, y = load_iris(return_X_y=True)
+    X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=42)
+    model_string = "baam_H512_Dclass_average_e128_nsamples500_numfeatures20_padzerosFalse_03_14_2024_15_03_22_epoch_400.cpkt"
+    model_path = get_mn_model(model_string)
+    X_train[0, 0] = np.nan
+    classifier = MotherNetAdditiveClassifier(device='cpu', path=model_path)
+    classifier.fit(X_train, y_train)
+    print(classifier)
+    X_test[0, 0] = np.nan
+    prob = classifier.predict_proba(X_test)
+    assert (prob.argmax(axis=1) == classifier.predict(X_test)).all()
+    assert classifier.score(X_test, y_test) > 0.9
+
+
+def test_baam_with_categoricals():
+    X, y = load_iris(return_X_y=True)
+    X_rand = np.random.normal(size=X.shape)
+    X_rand_cat = (X_rand > 0.0).astype(np.int32)
+    # Mix Float and categorical features.
+    X = np.concatenate([X[:, :2], X_rand_cat[:, 2:]], axis=-1)
+    X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=42)
+    model_string = "baam_H512_Dclass_average_e128_nsamples500_numfeatures20_padzerosFalse_03_14_2024_15_03_22_epoch_400.cpkt"
+    model_path = get_mn_model(model_string)
+    classifier = MotherNetAdditiveClassifier(device='cpu', path=model_path)
+    classifier.fit(X_train, y_train)
+    print(classifier)
+    prob = classifier.predict_proba(X_test)
+    assert (prob.argmax(axis=1) == classifier.predict(X_test)).all()
+    assert classifier.score(X_test, y_test) > 0.9
+
+
 def test_distilled_mlp_paper():
     X, y = load_iris(return_X_y=True)
     X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=42)
