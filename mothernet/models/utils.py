@@ -14,9 +14,9 @@ def sklearn_like_binning(bin_edges: torch.Tensor, n_bins: int, batch_size: int, 
                 bin_edges[col_idx, batch_idx] = unique_vals
             elif len(unique_vals) < n_bins:
                 bin_edges_cat = (unique_vals[:-1] + unique_vals[1:]) * 0.5
-                bin_edges_cat = F.interpolate(bin_edges_cat.unsqueeze(0).unsqueeze(0),
-                                              size=n_bins - 1, mode='nearest')
-                bin_edges[col_idx, batch_idx] = bin_edges_cat.squeeze()
+                # Fill up the bin edges with inf up until n_bins
+                bin_edges_cat = torch.cat((bin_edges_cat, torch.full((n_bins - len(bin_edges_cat) - 1,), torch.inf, device=bin_edges.device)))
+                bin_edges[col_idx, batch_idx] = bin_edges_cat
             else:
                 pass
 
